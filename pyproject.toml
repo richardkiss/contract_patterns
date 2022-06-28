@@ -1,0 +1,23 @@
+[tool.enscons]
+name = "contract_patterns"
+description = "Contract patterns"
+authors = ["Richard Kiss <him@richardkiss.com>"]
+license = "MIT"
+repository = "https://github.com/richardkiss/contract_patterns.git"
+readme = "README.md"
+src_root = "."
+dependencies = ["hsms@git+https://github.com/richardkiss/hsms.git@93994fe8cf73fcf8828f7e09be8127aa96195325#egg=hsms"]
+packages = ["clvm_contracts"]
+# version is defined with `setuptools_scm`. See `SConstruct` file.
+
+[tool.enscons.optional_dependencies]
+dev = ["pytest", "coverage", "flake8==4.0.1", "black==21.12b0"]
+
+[tool.enscons.entry_points]
+console_scripts = [
+  #"clvm_contracts = clvm_contracts.cmds.clvm_contracts:main",
+]
+
+[build-system]
+requires = ["pytoml>=0.1", "enscons", "setuptools_scm>=6.2"]
+build-backend = "enscons.api"
