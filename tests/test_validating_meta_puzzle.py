@@ -1,3 +1,5 @@
+import math
+
 from unittest import TestCase
 
 from clvm.EvalError import EvalError
@@ -12,7 +14,11 @@ from hsms.puzzles.p2_delegated_puzzle_or_hidden_puzzle import (
 )
 from hsms.streamables import Program
 
-from clvm_contracts import composite_amount_validation, validating_meta_puzzle
+from clvm_contracts import (
+    composite_amount_validation,
+    rate_limit_validation,
+    validating_meta_puzzle,
+)
 
 ALLOW_EVERYTHING_MOD = load_clvm(
     "allow_everything.cl", package_or_requirement="clvm_contracts"
@@ -96,3 +102,58 @@ class Tests(TestCase):
             [composite_solution, inner_solution]
         )
         output = contract.run(solution)
+
+    def test_just_rate_limit_layer(self):
+        seconds_per_interval, mojos_per_interval, zero_date = 100, 333, 864000
+        rate_limit_layer = rate_limit_validation.layer_puzzle(
+            seconds_per_interval, mojos_per_interval, zero_date
+        )
+        rate_limit_puzzle = rate_limit_layer.at("f")
+        rate_limit_curry_parameters = rate_limit_layer.at("r")
+        b32 = bytes32([0] * 32)
+        now = 12345
+        interval_count = math.ceil((zero_date - now) / seconds_per_interval)
+        min_change_amount = interval_count * mojos_per_interval
+        change_amount = min_change_amount + 1000
+        change_puzzle_hash = b"1" * 32
+        conditions = Program.to(
+            [
+                [81, now],
+                [51, b32, 1007],
+                [51, change_puzzle_hash, change_amount],
+                [1, "junk", 1001],
+            ]
+        )
+
+        # success case
+        pay_to_inner_puzzle_hash = b"0" * 32
+        composite_solution = merge_list(
+            rate_limit_curry_parameters,
+            rate_limit_validation.solution_for_layer(
+                seconds_per_interval,
+                mojos_per_interval,
+                zero_date,
+                now,
+                0,
+                2,
+                1,
+                [pay_to_inner_puzzle_hash],
+            ),
+        )
+
+        args = Program.to((conditions, composite_solution))
+        try:
+            r = rate_limit_puzzle.run(args)
+        except Exception as ex:
+            print(repr(ex))
+            print(repr(ex._sexp))
+            print("brun -y main.sym -x %s %s" % (rate_limit_puzzle, args))
+            breakpoint()
+            print(repr(ex))
+        assert r.as_int() == 1
+
+
+def merge_list(l1: Program, l2: Program) -> Program:
+    if l1.pair is None:
+        return l2
+    return Program.to((l1.pair[0], merge_list(l1.pair[1], l2)))

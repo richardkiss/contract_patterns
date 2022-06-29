@@ -1,4 +1,6 @@
 (mod (PUZZLE_LIST_WITH_CURRY_PARAMETERS solutions)
+  ; PUZZLE_LIST_WITH_CURRY_PARAMETERS = (PC1 PC2 PC3 ... PCN)
+  ; where PC_k = (puzzle_template . curried_values)
 
   (defmacro assert items
       (if (r items)
@@ -44,11 +46,8 @@
       conditions
   )
 
-  (defun main (puzzle_list solutions)
-     ; puzzle_list = (PC1 PC2 PC3 ... PCN)
-     ; where PC_k = (puzzle_template . curried_values)
-     (run_validators puzzle_list solutions (build_condition_summary (run_inner_puzzle puzzle_list solutions)))
+  (run_validators PUZZLE_LIST_WITH_CURRY_PARAMETERS
+                  solutions
+                  (build_condition_summary (run_inner_puzzle PUZZLE_LIST_WITH_CURRY_PARAMETERS solutions))
   )
-
-  (main PUZZLE_LIST_WITH_CURRY_PARAMETERS solutions)
 )
