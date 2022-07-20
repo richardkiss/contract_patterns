@@ -27,7 +27,7 @@
       )
   )
 
-  (defun run_validators (puzzle_list solutions conditions)
+  (defun run_validators (puzzle_list solutions (conditions . condition_summary))
       (if (r puzzle_list)
           (assert (a (f (f puzzle_list)) (c conditions (merge_lists (r (f puzzle_list)) (f solutions))))
                   (run_validators (r puzzle_list) (r solutions) (c conditions condition_summary))

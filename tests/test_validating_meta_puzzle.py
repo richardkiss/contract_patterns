@@ -24,6 +24,8 @@ ALLOW_EVERYTHING_MOD = load_clvm(
     "allow_everything.cl", package_or_requirement="clvm_contracts"
 )
 
+ANYONE_CAN_SPEND_PUZZLE = Program.to(1)
+
 
 def create_inner_puzzle_layer():
     secret_exponent = BLSSecretExponent.from_int(1)
@@ -109,13 +111,18 @@ class Tests(TestCase):
             seconds_per_interval, mojos_per_interval, zero_date
         )
         rate_limit_puzzle = rate_limit_layer.at("f")
-        rate_limit_curry_parameters = rate_limit_layer.at("r")
+        CA = rate_limit_curry_parameters = rate_limit_layer.at("r")
         b32 = bytes32([0] * 32)
         now = 12345
         interval_count = math.ceil((zero_date - now) / seconds_per_interval)
         min_change_amount = interval_count * mojos_per_interval
         change_amount = min_change_amount + 1000
-        change_puzzle_hash = b"1" * 32
+
+        inner_puzzle = ANYONE_CAN_SPEND_PUZZLE
+
+        pay_to_layer_list = [rate_limit_layer, Program.to((inner_puzzle, 0))]
+        change_puzzle = validating_meta_puzzle.puzzle_for_layers(pay_to_layer_list)
+        change_puzzle_hash = change_puzzle.tree_hash()
         conditions = Program.to(
             [
                 [81, now],
@@ -126,7 +133,10 @@ class Tests(TestCase):
         )
 
         # success case
-        pay_to_inner_puzzle_hash = b"0" * 32
+        assert_later_condition_index = 0
+        change_condition_index = 2
+        change_validating_puzzle_index = 0
+        validating_puzzle_hash_list = [_.tree_hash() for _ in pay_to_layer_list]
         composite_solution = merge_list(
             rate_limit_curry_parameters,
             rate_limit_validation.solution_for_layer(
@@ -134,19 +144,20 @@ class Tests(TestCase):
                 mojos_per_interval,
                 zero_date,
                 now,
-                0,
-                2,
-                1,
-                [pay_to_inner_puzzle_hash],
+                assert_later_condition_index,
+                change_condition_index,
+                change_validating_puzzle_index,
+                validating_puzzle_hash_list,
             ),
         )
 
         args = Program.to((conditions, composite_solution))
         try:
             r = rate_limit_puzzle.run(args)
+            assert r.as_int() == 1
         except Exception as ex:
-            print(repr(ex))
-            print(repr(ex._sexp))
+            #print(repr(ex))
+            #print(repr(ex._sexp))
             print("brun -y main.sym -x %s %s" % (rate_limit_puzzle, args))
             breakpoint()
             print(repr(ex))

@@ -41,7 +41,7 @@ def solution_for_layer(
     assert_later_condition_index: int,
     change_condition_index: int,
     change_validating_puzzle_index: int,
-    validating_puzzles_list: List[bytes32],
+    validating_puzzle_hash_list: List[bytes32],
 ) -> Program:
     interval_count = max(
         0, (zero_date - now + seconds_per_interval - 1) // seconds_per_interval
@@ -53,6 +53,6 @@ def solution_for_layer(
             assert_later_condition_index,
             change_condition_index,
             change_validating_puzzle_index,
-            validating_puzzles_list,
+            validating_puzzle_hash_list,
         ]
     )
