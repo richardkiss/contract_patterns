@@ -98,7 +98,7 @@
 
   (defun ensure_rate_limit_validator_in_validator_list (CA validating_puzzles_list change_validating_puzzle_index)
      (= (item_at_index validating_puzzles_list change_validating_puzzle_index)
-        (dsha256 2 (CA_MY_MOD_HASH CA) (sha256tree (list CA)))
+        (sha256 2 (CA_MY_MOD_HASH CA) (sha256tree (list CA)))
      )
   )
 
