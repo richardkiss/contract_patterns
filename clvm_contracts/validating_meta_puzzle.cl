@@ -43,7 +43,8 @@
       ; One thing we might do is dig out the `(REM)` condition and yield those
       ; parameters back to the validators in turn.
       ; This would make this puzzle a bit more complicated (but still very general).
-      conditions
+      ; for now, let's just use an empty list
+      (c conditions 0)
   )
 
   (run_validators PUZZLE_LIST_WITH_CURRY_PARAMETERS

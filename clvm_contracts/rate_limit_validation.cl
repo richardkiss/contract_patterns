@@ -92,10 +92,13 @@
       )
   )
 
+  ;; this is only used for debugging when we want to trace values going into `sha256`
   (defun dsha256 V
     (a (c (list sha256) V) 1)
   )
 
+  ;; ensure that a rate limit validator with the same `CA` parameters is in `validating_puzzles_list`,
+  ;; which purports to be the list of validator puzzles (as hashes) for the selected change address
   (defun ensure_rate_limit_validator_in_validator_list (CA validating_puzzles_list change_validating_puzzle_index)
      (= (item_at_index validating_puzzles_list change_validating_puzzle_index)
         (sha256 2 (CA_MY_MOD_HASH CA) (sha256tree (list CA)))
@@ -108,6 +111,8 @@
       (= change_puzzle_hash (calculate_validating_meta_puzzle_hash (CA_VALIDATING_META_MOD_HASH CA) validating_puzzles_list))
   )
 
+  ;; check that the selected change address is a validating meta puzzle with the rate-limting layer still in place
+  ;; with the appropriate curry parameters
   (defun ensure_change_address_valid (CA change_puzzle_hash change_validating_puzzle_index validating_puzzles_list)
       (all (ensure_change_puzzle_hash_correct CA change_puzzle_hash validating_puzzles_list)
            (ensure_rate_limit_validator_in_validator_list CA validating_puzzles_list change_validating_puzzle_index)
@@ -126,7 +131,6 @@
   )
 
   ;; there are a few things to check
-  ;;(if (x validating_puzzles_list)
   
   (all (ensure_assert_later_exists (item_at_index conditions assert_later_condition_index) now)
        (if (> now (CA_ZERO_DATE CA))

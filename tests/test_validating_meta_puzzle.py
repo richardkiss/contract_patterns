@@ -34,6 +34,50 @@ def create_inner_puzzle_layer():
     return inner_layer
 
 
+def dump_brun(prog: Program, args: Program):
+    """
+    Display info on how to debug from the shell
+    """
+    print(
+        "\n***\nbrun -y main.sym -x %s %s\n***\n" % (Program.to(prog), Program.to(args))
+    )
+
+
+def drun(prog: Program, args: Program) -> Program:
+    """
+    "debug run" - run the program and dump out debug `brun` text if it fails
+    """
+    try:
+        return Program.to(prog).run(Program.to(args))
+    except EvalError as ex:
+        # print(repr(ex))
+        # print(repr(ex._sexp))
+        dump_brun(prog, args)
+        raise
+
+
+def run_validator(
+    prog: Program, args: Program, expected_rv: int = 1, expected_raise: bool = False
+) -> Program:
+    """
+    Test a validating layer. If an unexpected thing happens (raises when it shouldn't or
+    doesn't raise when it should; or returns the wrong value) dump out the `brun` syntax
+    to facilitate debugging.
+    """
+    try:
+        r = Program.to(prog).run(Program.to(args))
+        if r.as_int() != expected_rv:
+            dump_brun(prog, args)
+        assert r.as_int() == expected_rv
+    except EvalError as ex:
+        if not expected_raise:
+            dump_brun(prog, args)
+        return ex._sexp
+    if expected_raise:
+        raise RuntimeError("expected raise")
+    return r
+
+
 class Tests(TestCase):
     def test_just_inner(self):
         inner_layer = create_inner_puzzle_layer()
@@ -42,7 +86,7 @@ class Tests(TestCase):
         b32 = bytes32([0] * 32)
         inner_solution = solution_for_conditions([[51, b32, 1000]])
         solution = validating_meta_puzzle.create_solution([inner_solution])
-        output = contract.run(solution)
+        output = drun(contract, solution)
 
     def test_just_composite_layer(self):
         composite_layer = composite_amount_validation.layer_puzzle()
@@ -53,31 +97,27 @@ class Tests(TestCase):
         # success case
         composite_solution = composite_amount_validation.solution_for_layer(0, 20, 50)
         args = Program.to((conditions, composite_solution))
-        r = composite_puzzle.run(args)
-        assert r.as_int() == 1
+        r = run_validator(composite_puzzle, args)
 
         # failed due to non-proof (one factor is 1)
         composite_solution = composite_amount_validation.solution_for_layer(0, 1, 1000)
         args = Program.to((conditions, composite_solution))
-        r = composite_puzzle.run(args)
-        assert r.as_int() == 0
+        r = run_validator(composite_puzzle, args, expected_rv=0)
 
         # failed due to bad proof
         composite_solution = composite_amount_validation.solution_for_layer(0, 21, 50)
         args = Program.to((conditions, composite_solution))
-        r = composite_puzzle.run(args)
-        assert r.as_int() == 0
+        r = run_validator(composite_puzzle, args, expected_rv=0)
 
         # success for 1001
         composite_solution = composite_amount_validation.solution_for_layer(1, 11, 91)
         args = Program.to((conditions, composite_solution))
-        r = composite_puzzle.run(args)
-        assert r.as_int() == 1
+        r = run_validator(composite_puzzle, args)
 
         # failed due to indexed condition not `CREATE_COIN`
         composite_solution = composite_amount_validation.solution_for_layer(2, 11, 91)
         args = Program.to((conditions, composite_solution))
-        self.assertRaises(EvalError, lambda: composite_puzzle.run(args))
+        r = run_validator(composite_puzzle, args, expected_raise=True)
 
     def test_allow_everything_and_inner_layers(self):
         inner_layer = create_inner_puzzle_layer()
@@ -90,7 +130,7 @@ class Tests(TestCase):
         solution = validating_meta_puzzle.create_solution(
             [allow_everything_solution, inner_solution]
         )
-        output = contract.run(solution)
+        output = drun(contract, solution)
 
     def test_composite_and_inner_layers(self):
         inner_layer = create_inner_puzzle_layer()
@@ -98,12 +138,20 @@ class Tests(TestCase):
         all_layers = [composite_layer, inner_layer]
         contract = validating_meta_puzzle.puzzle_for_layers(all_layers)
         b32 = bytes32([0] * 32)
-        inner_solution = solution_for_conditions([[51, b32, 1000]])
+        conditions = [[51, b32, 1000]]
+        inner_solution = solution_for_conditions(conditions)
         composite_solution = composite_amount_validation.solution_for_layer(1, 20, 50)
         solution = validating_meta_puzzle.create_solution(
             [composite_solution, inner_solution]
         )
-        output = contract.run(solution)
+        output = drun(contract, solution)
+        aggsig_condition = [
+            50,
+            inner_layer[1][0],
+            Program.to((1, conditions)).tree_hash(),
+        ]
+        expected_output_conditions = Program.to([aggsig_condition] + conditions)
+        assert bytes(output) == bytes(expected_output_conditions)
 
     def test_just_rate_limit_layer(self):
         seconds_per_interval, mojos_per_interval, zero_date = 100, 333, 864000
@@ -111,8 +159,8 @@ class Tests(TestCase):
             seconds_per_interval, mojos_per_interval, zero_date
         )
         rate_limit_puzzle = rate_limit_layer.at("f")
-        CA = rate_limit_curry_parameters = rate_limit_layer.at("r")
-        b32 = bytes32([0] * 32)
+        rate_limit_curry_parameters = rate_limit_layer.at("r")
+        fake_output_address = bytes32([0] * 32)
         now = 12345
         interval_count = math.ceil((zero_date - now) / seconds_per_interval)
         min_change_amount = interval_count * mojos_per_interval
@@ -126,7 +174,7 @@ class Tests(TestCase):
         conditions = Program.to(
             [
                 [81, now],
-                [51, b32, 1007],
+                [51, fake_output_address, 1007],
                 [51, change_puzzle_hash, change_amount],
                 [1, "junk", 1001],
             ]
@@ -137,31 +185,22 @@ class Tests(TestCase):
         change_condition_index = 2
         change_validating_puzzle_index = 0
         validating_puzzle_hash_list = [_.tree_hash() for _ in pay_to_layer_list]
+        rate_limit_solution = rate_limit_validation.solution_for_layer(
+            seconds_per_interval,
+            mojos_per_interval,
+            zero_date,
+            now,
+            assert_later_condition_index,
+            change_condition_index,
+            change_validating_puzzle_index,
+            validating_puzzle_hash_list,
+        )
         composite_solution = merge_list(
-            rate_limit_curry_parameters,
-            rate_limit_validation.solution_for_layer(
-                seconds_per_interval,
-                mojos_per_interval,
-                zero_date,
-                now,
-                assert_later_condition_index,
-                change_condition_index,
-                change_validating_puzzle_index,
-                validating_puzzle_hash_list,
-            ),
+            rate_limit_curry_parameters, rate_limit_solution
         )
 
         args = Program.to((conditions, composite_solution))
-        try:
-            r = rate_limit_puzzle.run(args)
-            assert r.as_int() == 1
-        except Exception as ex:
-            #print(repr(ex))
-            #print(repr(ex._sexp))
-            print("brun -y main.sym -x %s %s" % (rate_limit_puzzle, args))
-            breakpoint()
-            print(repr(ex))
-        assert r.as_int() == 1
+        r = run_validator(rate_limit_puzzle, args)
 
 
 def merge_list(l1: Program, l2: Program) -> Program:
